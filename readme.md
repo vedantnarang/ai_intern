@@ -45,7 +45,7 @@ This repository provides an interactive Streamlit dashboard for cross-analyzing 
     ```bash
     streamlit run app.py
     ```
-    By default, the dashboard launches at `http://localhost:8501` in your browser.
+    By default, the dashboard launches at `http://localhost:8502` in your browser.
 
     If the default port is busy, specify a new one:
     ```bash
