@@ -5,14 +5,14 @@ import plotly.express as px
 
 from scripts.load_data import load_all
 
-
+#save the result so that the page does not refresh
 @st.cache_data(show_spinner=False)
 def get_data() -> dict[str, pd.DataFrame]:
     return load_all()
 
 
-st.set_page_config(page_title="AI Intern Data Explorer", layout="wide")
-st.title("AI Intern Data Explorer")
+st.set_page_config(page_title="Customer Experience Dashboard", layout="wide")
+st.title("Option 4: Customer Experience Dashboard: Build a comprehensive tool that identifies at-risk customers and suggests interventions.")
 
 with st.spinner("Loading data..."):
     data = get_data()
@@ -54,7 +54,7 @@ with st.sidebar:
     else:
         date_range = None
 
-
+# dropped null values and shows only unique values in the dataset if the column exsists
     seg_options = sorted(df["Customer_Segment"].dropna().unique()) if "Customer_Segment" in df.columns else []
     seg_selected = st.multiselect("Customer segment", seg_options, default=seg_options) if seg_options else []
 
@@ -67,7 +67,7 @@ with st.sidebar:
     dest_options = sorted(df["Destination"].dropna().unique()) if "Destination" in df.columns else []
     dest_selected = st.multiselect("Destination", dest_options, default=dest_options) if dest_options else []
 
-
+# applying the filter son the dataset
 df_filtered = df
 if date_col_active is not None and date_range:
     start_date, end_date = date_range
@@ -121,6 +121,113 @@ with col_right:
     else:
         st.info("Need at least one datetime and one numeric column for line chart.")
 
+# Box plot for Delivery Time vs Promise Time
+if "Actual_Delivery_Days" in df_filtered.columns and "Promised_Delivery_Days" in df_filtered.columns:
+    st.subheader("Delivery Time Analysis")
+    
+    delivery_data = df_filtered[["Actual_Delivery_Days", "Promised_Delivery_Days"]].copy()
+    
+    
+    delivery_data["Actual_Delivery_Days"] = pd.to_numeric(delivery_data["Actual_Delivery_Days"], errors="coerce")
+    delivery_data["Promised_Delivery_Days"] = pd.to_numeric(delivery_data["Promised_Delivery_Days"], errors="coerce")
+    
+    
+    delivery_data = delivery_data.dropna()
+    
+    if not delivery_data.empty:
+     
+        delivery_long = pd.melt(
+            delivery_data, 
+            var_name="Delivery_Type", 
+            value_name="Days"
+        )
+        
+        fig_box = px.box(
+            delivery_long, 
+            x="Delivery_Type", 
+            y="Days",
+            title="Delivery Time Distribution: Actual vs Promised",
+            labels={
+                "Delivery_Type": "Delivery Type",
+                "Days": "Days"
+            },
+            color="Delivery_Type",
+            color_discrete_map={
+                "Actual_Delivery_Days": "#ff7f0e",
+                "Promised_Delivery_Days": "#1f77b4"
+            }
+        )
+
+        fig_box.update_layout(
+            showlegend=True,
+            xaxis_title="Delivery Type",
+            yaxis_title="Days",
+            height=500
+        )
+        
+        st.plotly_chart(fig_box, use_container_width=True)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            actual_mean = delivery_data["Actual_Delivery_Days"].mean()
+            st.metric("Actual Delivery (Avg)", f"{actual_mean:.1f} days")
+        
+        with col2:
+            promised_mean = delivery_data["Promised_Delivery_Days"].mean()
+            st.metric("Promised Delivery (Avg)", f"{promised_mean:.1f} days")
+        
+        with col3:
+            delay_avg = actual_mean - promised_mean
+            st.metric("Average Delay", f"{delay_avg:.1f} days", 
+                     delta=f"{delay_avg:.1f}" if delay_avg > 0 else None)
+    else:
+        st.info("No valid numeric data available for delivery time analysis.")
+
+   
+if "Carrier" in df_filtered.columns:
+    cost_cols = ["Fuel_Cost", "Labor_Cost", "Vehicle_Maintenance", "Insurance", 
+                 "Packaging_Cost", "Technology_Platform_Fee", "Other_Overhead"]
+    
+    
+    available_cost_cols = [c for c in cost_cols if c in df_filtered.columns]
+    
+    if available_cost_cols:
+        st.subheader("Cost breakdown grouped by carrier")
+        cost_data = df_filtered[["carrier"] + available_cost_cols].copy()
+        
+        for col in available_cost_cols:
+            cost_data[col] = pd.to_numeric(cost_data[col], errors="coerce")
+        
+       
+        cost_data = cost_data.dropna(subset=available_cost_cols, how='all')
+        
+        if not cost_data.empty:
+            
+            cost_by_carrier = cost_data.groupby("carrier")[available_cost_cols].mean().reset_index()
+            
+           
+            cost_melted = cost_by_carrier.melt(
+                id_vars="Carrier",
+                value_vars=available_cost_cols,
+                var_name="Cost_Type",
+                value_name="Average_Cost"
+            )
+            
+            fig_cost = px.bar(
+                cost_melted,
+                x="Carrier",
+                y="Average_Cost",
+                color="Cost_Type",
+                title="Average Cost Breakdown by Carrier (INR)",
+                labels={"Average_Cost": "Cost (INR)", "Cost_Type": "Cost Category"},
+                text_auto='.0f'
+            )
+            
+            fig_cost.update_layout(barmode='stack')
+            st.plotly_chart(fig_cost, use_container_width=True)
+            st.caption("This tells us where the expenses are going and might provide insights on how this data can be used to cut down the costs for increasing profits and at the same time increasing customer satisfaction ")
+        else:
+            st.info("cost data not available ...")
+    
 
 if dataset_name == "analytical" and "On_Time" in df_filtered.columns:
     from scripts.load_data import (
@@ -191,16 +298,13 @@ if dataset_name == "analytical" and "On_Time" in df_filtered.columns:
         st.dataframe(flagged[cols_to_show].sort_values("Cost_to_Serve_Risk", ascending=False).head(200))
 
     with st.expander("insights from analytics"):
-        st.subheader("Customer Experience")
-        
+        st.subheader("Customer Experience Dashboard")
         
         total_orders = len(df_filtered)
         orders_with_feedback = len(df_filtered[df_filtered["Would_Recommend"].notna()])
-        
-       
+    
         otd_overall = compute_otd(df_filtered)
         otd_pct = otd_overall["OTD_percent"].iloc[0] if not otd_overall.empty else 0
-        
         
         rec_overall = compute_recommend(df_filtered)
         rec_pct = rec_overall["Recommend_percent"].iloc[0] if not rec_overall.empty else 0
@@ -228,15 +332,13 @@ if dataset_name == "analytical" and "On_Time" in df_filtered.columns:
         st.subheader("Key Insights")
         
         insights = []
-        
-    
-        if otd_pct < 90:
-            insights.append(f"🚨 Reliability Alert: OTD at {otd_pct:.1f}% is below 90% threshold. Immediate carrier/route review needed.")
+        # assuming thresholds here 
+        if otd_pct < 85:
+            insights.append(f" Reliability Alert: OTD at {otd_pct:.1f}% is below 85% threshold. Immediate carrier/route review needed.")
         elif otd_pct >= 95:
-            insights.append(f"✅ Excellent Performance: {otd_pct:.1f}% OTD exceeds industry standards.")
+            insights.append(f"Excellent Performance: {otd_pct:.1f}% OTD exceeds industry standards.")
         else:
-            insights.append(f"📊 Good Performance: {otd_pct:.1f}% OTD meets target but has room for improvement.")
-        
+            insights.append(f"Good Performance: {otd_pct:.1f}% OTD meets target but has room for improvement.")
         
         if sev_pct > 5:
             insights.append(f" Delay Risk : {sev_pct:.1f}% severe delays exceed 5% threshold. Proactive communication required.")
@@ -258,10 +360,9 @@ if dataset_name == "analytical" and "On_Time" in df_filtered.columns:
         
         if traffic_delay > 30:
             insights.append(f" Traffic Impact : Average {traffic_delay:.0f} min delays. Route optimization needed.")
-        
-        # Carrier performance insights
+        # how carrier affects the dataset 
         if "Carrier" in df_filtered.columns:
-            # Convert On_Time to float to avoid Int64 aggregation issues
+            
             df_carrier = df_filtered.copy()
             if "On_Time" in df_carrier.columns:
                 df_carrier["On_Time"] = df_carrier["On_Time"].astype("float64")
@@ -277,9 +378,8 @@ if dataset_name == "analytical" and "On_Time" in df_filtered.columns:
             if worst_carrier != best_carrier:
                 insights.append(f"Carrier Performance : {worst_carrier} needs improvement ({carrier_perf.loc[worst_carrier, 'On_Time']*100:.0f}% OTD), while {best_carrier} excels ({carrier_perf.loc[best_carrier, 'On_Time']*100:.0f}% OTD).")
         
-        # Route insights
         if "Origin" in df_filtered.columns and "Destination" in df_filtered.columns:
-            # Convert On_Time to float to avoid Int64 aggregation issues
+
             df_route = df_filtered.copy()
             if "On_Time" in df_route.columns:
                 df_route["On_Time"] = df_route["On_Time"].astype("float64")
@@ -318,5 +418,3 @@ if dataset_name == "analytical" and "On_Time" in df_filtered.columns:
         
         for action in actions:
             st.write(f"• {action}")
-
-

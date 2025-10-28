@@ -1,0 +1,13 @@
+streamlit>=1.28.0
+pandas>=2.0.0
+numpy>=1.24.0
+altair>=5.0.0
+plotly>=5.15.0
+python-dateutil>=2.8.0
+pytz>=2023.3
+six>=1.16.0
+# i would suggest to use a virtual environment 
+# run the following commands 
+# 1. python -m venv .venv
+#2. .venv/scripts/activate # to activate the virtual env
+#3. pip install -r requirements.txt
